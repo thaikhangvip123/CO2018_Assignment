@@ -7,7 +7,7 @@
 - **Members**:
   
   -  Nguyễn Trường Thái Khang - 2211458
-  -  Nguyễn Xuân Hy
+  -  Nguyễn Xuân Hy           - 2211409
   -  2
   -  3
   -  4
