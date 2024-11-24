@@ -7,7 +7,7 @@
 - **Members**:
   
   -  Nguyễn Trường Thái Khang
-  -  1
+  -  Nguyễn Xuân Hy
   -  2
   -  3
   -  4
