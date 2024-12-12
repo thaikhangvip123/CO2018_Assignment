@@ -11,7 +11,7 @@ static uint32_t avail_pid = 1;
 #define OPT_FREE	"free"
 #define OPT_READ	"read"
 #define OPT_WRITE	"write"
-#ifdef MM_PAGING
+#ifdef 	MM_PAGING
 #define OPT_MALLOC	"malloc"
 #endif
 
