@@ -278,7 +278,6 @@ int pg_setval(struct mm_struct *mm, int addr, BYTE value, struct pcb_t *caller)
     int off = PAGING_OFFST(addr);
     int fpn;
 
-    /* Get the page to MEMRAM, swap from MEMSWAP if needed */
     if (pg_getpage(mm, pgn, &fpn, caller) != 0) {
         printf("[PG_SETVAL] Error: Failed to get page for addr=%d (page=%d).\n", addr, pgn);
         return -1;

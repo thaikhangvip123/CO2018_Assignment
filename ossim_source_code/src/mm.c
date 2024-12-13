@@ -141,39 +141,48 @@ int vmap_page_range(struct pcb_t *caller,           // process call
 
 int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst)
 {
-  int pgit, fpn;
-  struct framephy_struct *newfp_str;
+  for (int pgit = 0; pgit < req_pgnum; pgit++) {
+    uint32_t *pte = &caller->mm->pgd[pgit];
 
-  // Allocate requested number of frames (pages) for the caller
-  for (pgit = 0; pgit < req_pgnum; pgit++) {
-    // Get a free frame physical number (fpn) from memory
-    if (MEMPHY_get_freefp(caller->mram, &fpn) == 0) {
-      // If a free frame is found, allocate it and add to the list
-
-      // Initialize the frame structure (it can be extended to contain more info)
-      newfp_str = malloc(sizeof(struct framephy_struct));
-      newfp_str->fpn = fpn;  // Store the frame physical number (fpn) in the structure
-      
-      // Link the allocated frame to the list of allocated frames
-      newfp_str->fp_next = *frm_lst; // Link to the previous frames in the list
-      *frm_lst = newfp_str; // Set the head of the list to the new frame
-
-    } else {
-      // If not enough frames are available, handle the error case
-      // Free any frames that were allocated until now
-      struct framephy_struct *temp;
-      while (*frm_lst != NULL) {
-        temp = *frm_lst;
-        *frm_lst = (*frm_lst)->fp_next;
-        free(temp);  // Free the allocated frames
-      }
-
-      // Return an error code (e.g., -1) to indicate failure to allocate all frames
-      return -1;
+    // Kiểm tra nếu trang đã được ánh xạ
+    if (PAGING_PTE_PAGE_PRESENT(*pte)) {
+        //printf("[ALLOC_PAGES_RANGE] Page %d already mapped to frame %d.\n", pgit, PAGING_PTE_FPN(*pte));
+        continue;
     }
+
+    int fpn;
+    // Lấy khung trống từ RAM
+    pthread_mutex_lock(&ram_lock);
+    if (MEMPHY_get_freefp(caller->mram, &fpn) != 0) {
+        pthread_mutex_unlock(&ram_lock);
+
+        //printf("[ALLOC_PAGES_RANGE] Error: Out of free frames.\n");
+        return -1;
+    }
+    pthread_mutex_unlock(&ram_lock);
+
+    // Cập nhật danh sách khung trang
+    struct framephy_struct *node = malloc(sizeof(struct framephy_struct));
+    if (node == NULL) {
+        printf("[ALLOC_PAGES_RANGE] Error: Failed to allocate memory for framephy_struct.\n");
+        return -1;
+    }
+    node->fpn = fpn;
+    node->fp_next = *frm_lst;
+    *frm_lst = node;
+
+    // Cập nhật PTE
+    pte_set_fpn(pte, fpn);
+    if (!PAGING_PTE_PAGE_PRESENT(*pte)) {
+        printf("[ALLOC_PAGES_RANGE] Error: Failed to set frame number in PTE for page %d.\n", pgit);
+        // Thêm trang vào danh sách FIFO
+          //enlist_pgn_node(&caller->mm->fifo_pgn, pgit);
+        return -1;
+    }
+    enlist_pgn_node(&caller->mm->fifo_pgn, pgit);
+    //printf("[ALLOC_PAGES_RANGE] Page %d mapped to frame %d.\n", pgit, fpn);
   }
 
-  // Successfully allocated all pages, return 0
   return 0;
 }
 

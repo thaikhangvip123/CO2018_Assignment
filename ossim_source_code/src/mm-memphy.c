@@ -140,11 +140,19 @@ int MEMPHY_format(struct memphy_struct *mp, int pagesz)
 
 int MEMPHY_get_freefp(struct memphy_struct *mp, int *retfpn)
 {
+   if (mp == NULL || retfpn == NULL) {
+        printf("[MEMPHY_GET_FREEFP] Error: Invalid memory structure or output pointer.\n");
+        return -1;
+    }
+   pthread_mutex_lock(&ram_lock); // Đảm bảo đồng bộ hóa
+
    struct framephy_struct *fp = mp->free_fp_list;
 
-   if (fp == NULL)
+   if (fp == NULL){
+       printf("[MEMPHY_GET_FREEFP] Error: No free frame available.\n");
+       pthread_mutex_unlock(&ram_lock);
      return -1;
-
+   }
    *retfpn = fp->fpn;
    mp->free_fp_list = fp->fp_next;
 
@@ -152,7 +160,7 @@ int MEMPHY_get_freefp(struct memphy_struct *mp, int *retfpn)
     * No garbage collector acting then it not been released
     */
    free(fp);
-
+   pthread_mutex_unlock(&ram_lock);
    return 0;
 }
 
