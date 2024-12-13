@@ -281,8 +281,8 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
   vma1->vm_end = 0;
   vma1->sbrk = PAGING_MEMRAMSZ;
 
-  struct vm_rg_struct *first_rg = init_vm_rg(vma1->vm_start, vma1->vm_end, 0);
-  enlist_vm_rg_node(&vma1->vm_freerg_list, first_rg);
+  struct vm_rg_struct *heap_rg = init_vm_rg(vma1->vm_start, vma1->vm_end, 0);
+  enlist_vm_rg_node(&vma1->vm_freerg_list, heap_rg);
 
   vma0->vm_next = vma1;
   vma1->vm_next = NULL;

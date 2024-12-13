@@ -453,28 +453,39 @@ int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, int vmastart, int 
  */
 int inc_vma_limit(struct pcb_t *caller, int vmaid, int inc_sz, int *inc_limit_ret)
 {
-    struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
-    if (!cur_vma) return -1;
+    if (!caller || !caller->mm) {
+        return -1; // Kiểm tra đầu vào hợp lệ
+    }
 
-    int inc_amt = PAGING_PAGE_ALIGNSZ(inc_sz);
+    int aligned_inc_sz = (inc_sz + PAGING_SBRK_INIT_SZ - 1) / PAGING_SBRK_INIT_SZ * PAGING_SBRK_INIT_SZ;
+    int inc_amt = PAGING_PAGE_ALIGNSZ(aligned_inc_sz);
     int incnumpage = inc_amt / PAGING_PAGESZ;
 
-    printf("[INC_VMA_LIMIT] Expanding VMA %d by %d bytes (%d pages)\n", vmaid, inc_sz, incnumpage);
+    struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+    if (!cur_vma) {
+        return -1;  // Không tìm thấy VMA
+    }
 
-    if (validate_overlap_vm_area(caller, vmaid, cur_vma->vm_end, cur_vma->vm_end + (vmaid == 1? -inc_amt:inc_amt)) < 0) {
-        printf("[INC_VMA_LIMIT] Error: Overlap detected while expanding VMA %d\n", vmaid);
+    int new_end = (vmaid == 0) ? cur_vma->vm_end + inc_amt : cur_vma->vm_end - inc_amt;
+
+    // Kiểm tra chồng lấn
+    if (validate_overlap_vm_area(caller, vmaid, (vmaid == 0 ? cur_vma->vm_end : new_end), new_end) < 0) {
+        return -1;  // Lỗi chồng lấn vùng
+    }
+
+    cur_vma->vm_end = new_end;
+    if (inc_limit_ret) {
+        *inc_limit_ret = cur_vma->vm_end;
+    }
+
+    struct vm_rg_struct area;
+    area.rg_start = (vmaid == 0) ? cur_vma->vm_end - inc_amt : new_end;
+    area.rg_end = cur_vma->vm_end;
+
+    if (vm_map_ram(caller, area.rg_start, area.rg_end, cur_vma->vm_end, incnumpage, &area) < 0) {
         return -1;
     }
 
-
-    if(vmaid == 1) {
-      cur_vma->vm_end -= inc_amt;
-    }else if(vmaid == 0) {
-      cur_vma->vm_end += inc_amt;
-    }
-    *inc_limit_ret = inc_amt;
-
-    printf("[INC_VMA_LIMIT] VMA %d expanded to: start=%d, end=%d\n", vmaid, cur_vma->vm_start, cur_vma->vm_end);
     return 0;
 }
 
