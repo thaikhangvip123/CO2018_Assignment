@@ -187,7 +187,7 @@ int MEMPHY_dump(struct memphy_struct * mp)
    }
    printf("__END CONTENT__\n");
 
-   print("\n");
+   printf("\n");
    return 0;
 }
 int MEMPHY_put_freefp(struct memphy_struct *mp, int fpn)
