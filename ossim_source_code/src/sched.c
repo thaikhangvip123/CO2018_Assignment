@@ -10,7 +10,8 @@ static struct queue_t run_queue;
 static pthread_mutex_t queue_lock;
 
 #ifdef MLQ_SCHED
-static struct queue_t mlq_ready_queue[MAX_PRIO];
+	struct queue_t mlq_ready_queue[MAX_PRIO];
+	uint32_t currentPrior;
 #endif
 
 int queue_empty(void) {
@@ -47,7 +48,6 @@ struct pcb_t * get_mlq_proc(void) {
 	/*TODO: get a process from PRIORITY [ready_queue].
 	 * Remember to use lock to protect the queue.
 	 * */
-	int currentPrior;
 	pthread_mutex_lock(&queue_lock);
 	if(mlq_ready_queue[currentPrior].slot > 0) {
 		int i;

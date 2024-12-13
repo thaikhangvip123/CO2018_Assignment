@@ -90,9 +90,9 @@ int vmap_page_range(struct pcb_t *caller,           // process call
                     struct framephy_struct *frames, // list of the mapped frames
                     struct vm_rg_struct *ret_rg)    // return mapped region, the real mapped fp
 {                                                   // no guarantee all given pages are mapped
-  uint32_t *pte = malloc(sizeof(uint32_t));
-  struct framephy_struct *fpit = malloc(sizeof(struct framephy_struct));
-  int fpn;
+  // uint32_t *pte = malloc(sizeof(uint32_t));
+  // struct framephy_struct *fpit = malloc(sizeof(struct framephy_struct));
+  // int fpn;
   int pgit = 0;
   int pgn = PAGING_PGN(addr);
 
@@ -101,28 +101,35 @@ int vmap_page_range(struct pcb_t *caller,           // process call
   //ret_rg->rg_start = ...
   //ret_rg->vmaid = ...
   */
-  ret_rg->rg_end = ret_rg->rg_start = addr;
+  ret_rg->rg_start = addr;
+  ret_rg->rg_end = addr + pgnum * PAGING_PAGESZ;
+  ret_rg->vmaid = (addr < PAGING_SBRK_INIT_SZ) ? 0 : 1;
   // fpit->fp_next = frames;
 
-  struct framephy_struct *fpit = frames;
+  // check if frames are available
+  if(frames == NULL) return -1;
 
   for (pgit = 0; pgit < pgnum; ++pgit)
   {
-    fpn = fpit->fpn;
-    printf("Free frame is: %d\n", fpn);
-    pte_set_swap(pte, 1, 0);
-    pte_set_fpn(pte, fpn);
+    // Get the frame to map
+    int fpn = frames->fpn;  // Physical frame number
+    uint32_t pte;
 
-    caller->mm->pgd[pgn + pgit] = *pte;
-    printf("Mapped region [%ld->", ret_rg->rg_end);
-    ret_rg->rg_end += PAGING_PAGESZ;
-    printf("%ld] to frame %d with address %08x\n", ret_rg->rg_end, fpn, *pte);
-    fpit = fpit->fp_next;
+    // Initialize Page Table Entry (PTE)
+    init_pte(&pte, 1, fpn, 0, 0, 0, 0); // Assuming "present" flag is 1, no write-protect, etc.
 
+    // Map this page in the page table
+    caller->mm->pgd[pgn + pgit] = pte;
+
+    // Move to the next frame
+    frames = frames->fp_next;
+    if (frames == NULL && pgit < pgnum - 1) {
+        return -1; // Error: Not enough frames for all pages
+    }
+
+    // Enqueue the page number for page replacement tracking (FIFO)
     enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
   }
-  free(pte);
-  caller->mram->used_fp_list = frames;
   return 0;
 }
 
@@ -138,73 +145,36 @@ int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struc
   int pgit, fpn;
   struct framephy_struct *newfp_str;
 
-  /* TODO: allocate the page
-  //caller-> ...
-  //frm_lst-> ...
-  */
-  for (pgit = 0; pgit < req_pgnum; pgit++)
-  {
-    if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
-    {
-      newfp_str = (struct framephy_struct *)malloc(sizeof(struct framephy_struct));
-      newfp_str->fpn = fpn;
-      newfp_str->owner = caller->mm;
-      if (!*frm_lst)
-        *frm_lst = newfp_str;
-      else
-      {
-        newfp_str->fp_next = *frm_lst;
-        *frm_lst = newfp_str;
+  // Allocate requested number of frames (pages) for the caller
+  for (pgit = 0; pgit < req_pgnum; pgit++) {
+    // Get a free frame physical number (fpn) from memory
+    if (MEMPHY_get_freefp(caller->mram, &fpn) == 0) {
+      // If a free frame is found, allocate it and add to the list
+
+      // Initialize the frame structure (it can be extended to contain more info)
+      newfp_str = malloc(sizeof(struct framephy_struct));
+      newfp_str->fpn = fpn;  // Store the frame physical number (fpn) in the structure
+      
+      // Link the allocated frame to the list of allocated frames
+      newfp_str->fp_next = *frm_lst; // Link to the previous frames in the list
+      *frm_lst = newfp_str; // Set the head of the list to the new frame
+
+    } else {
+      // If not enough frames are available, handle the error case
+      // Free any frames that were allocated until now
+      struct framephy_struct *temp;
+      while (*frm_lst != NULL) {
+        temp = *frm_lst;
+        *frm_lst = (*frm_lst)->fp_next;
+        free(temp);  // Free the allocated frames
       }
-      newfp_str->fp_next = caller->mram->used_fp_list;
-      caller->mram->used_fp_list = newfp_str;
-    }
-    else
-    { // ERROR CODE of obtaining somes but not enough frames
-      int victim_fpn, victim_pgn, victim_pte;
-      int swpfpn = -1;
-      if (find_victim_page(caller->mm, &victim_pgn) < 0)
-        return -1;
-      victim_pte = caller->mm->pgd[victim_pgn];
-      victim_fpn = PAGING_FPN(victim_pte);
-      //*****************
-      newfp_str = (struct framephy_struct *)malloc(sizeof(struct framephy_struct));
-      newfp_str->fpn = victim_fpn;
-      newfp_str->owner = caller->mm;
-      if (!*frm_lst)
-        *frm_lst = newfp_str;
-      else
-        newfp_str->fp_next = *frm_lst;
-      *frm_lst = newfp_str;
-      int i = 0;
-      if (MEMPHY_get_freefp(caller->active_mswp, &swpfpn) == 0)
-      {
-        __swap_cp_page(caller->mram, victim_fpn, caller->active_mswp, swpfpn); // copy content on victim rame to swap memory space
-        struct memphy_struct *mswp = (struct memphy_struct *)caller->mswp;
-        for (i = 0; i < PAGING_MAX_MMSWP; i++)
-        {
-          if (mswp + i == caller->active_mswp)
-            break;
-        }
-      }
-      else
-      {
-        struct memphy_struct *mswp = (struct memphy_struct *)caller->mswp;
-        swpfpn = -1;
-        for (i = 0; i < PAGING_MAX_MMSWP; i++)
-        {
-          if (MEMPHY_get_freefp(mswp + i, &swpfpn) == 0)
-          {
-            __swap_cp_page(caller->mram, victim_fpn, mswp + i, swpfpn); // copy content on victim frame to swap memory space
-            break;
-          }
-        }
-      }
-      if (swpfpn == -1)
-        return -3000;
-      pte_set_swap(&caller->mm->pgd[victim_pgn], i, swpfpn);
+
+      // Return an error code (e.g., -1) to indicate failure to allocate all frames
+      return -1;
     }
   }
+
+  // Successfully allocated all pages, return 0
   return 0;
 }
 
@@ -281,21 +251,46 @@ int __swap_cp_page(struct memphy_struct *mpsrc, int srcfpn,
  */
 int init_mm(struct mm_struct *mm, struct pcb_t *caller)
 {
+  // create VMA for heap segment
   struct vm_area_struct *vma0 = malloc(sizeof(struct vm_area_struct));
   struct vm_area_struct *vma1 = malloc(sizeof(struct vm_area_struct));
-
+  if(!vma0) {
+    perror("Allocation failed for VMA0!");
+    return -1;
+  }
+  if(!vma1) {
+    perror("Allocation failed for VMA1!");
+    free(vma0);
+    return -1;
+  }
+  // allocation page with max size page
   mm->pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
 
   /* By default the owner comes with at least one vma for DATA */
   vma0->vm_id = 0;
   vma0->vm_start = 0;
-  vma0->vm_end = vma0->vm_start;
-  vma0->sbrk = vma0->vm_start;
+  vma0->vm_end = PAGING_SBRK_INIT_SZ;
+  //vma0->sbrk = vma0->vm_start;
+  vma0->sbrk = 0;
   struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end, 0);
   enlist_vm_rg_node(&vma0->vm_freerg_list, first_rg);
 
-  vma0->vm_next = NULL;
-  vma0->vm_next = mm;
+  // set VMA1 for heap segment (from highest address)
+  vma1->vm_id = 1;
+  vma1->vm_start = PAGING_MEMRAMSZ;
+  vma1->vm_end = 0;
+  vma1->sbrk = PAGING_MEMRAMSZ;
+
+  struct vm_rg_struct *first_rg = init_vm_rg(vma1->vm_start, vma1->vm_end, 0);
+  enlist_vm_rg_node(&vma1->vm_freerg_list, first_rg);
+
+  vma0->vm_next = vma1;
+  vma1->vm_next = NULL;
+
+  vma0->vm_mm = mm;
+  vma1->vm_mm = mm;
+
+
   mm->mmap = vma0;
 
   /* TODO update VMA0 next */
