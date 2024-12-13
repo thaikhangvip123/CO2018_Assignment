@@ -403,18 +403,45 @@ int free_pcb_memph(struct pcb_t *caller)
  */
 struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, int size, int alignedsz)
 {
-    struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
-    if (!cur_vma) return NULL;
+    struct vm_rg_struct *newrg;
+    // Đảm bảo rằng caller và caller->mm không phải NULL trước khi truy cập
+    if (caller == NULL || caller->mm == NULL) {
+        fprintf(stderr, "Invalid caller or mm_struct.\n");
+        return NULL; // Trả về NULL nếu caller hoặc mm_struct không hợp lệ
+    }
 
-    // Kiểm tra vượt giới hạn `vm_end`
-    if (cur_vma->sbrk + alignedsz > cur_vma->vm_end) return NULL;
+    // Đảm bảo rằng vmaid là hợp lệ (trong phạm vi định nghĩa)
+    if (vmaid < 0 || vmaid >= PAGING_MAX_SYMTBL_SZ) {
+        fprintf(stderr, "Invalid vmaid: %d.\n", vmaid);
+        return NULL; // Trả về NULL nếu vmaid không hợp lệ
+    }
 
-    struct vm_rg_struct *newrg = malloc(sizeof(struct vm_rg_struct));
-    if (!newrg) return NULL;
+    // Cấp phát bộ nhớ cho vùng nhớ mới
+    newrg = malloc(sizeof(struct vm_rg_struct));
+    if (newrg == NULL) {
+        fprintf(stderr, "Memory allocation failed for new vm_rg_struct.\n");
+        return NULL; // Trả về NULL nếu cấp phát bộ nhớ thất bại
+    }
 
-    newrg->rg_start = cur_vma->sbrk;
-    newrg->rg_end = cur_vma->sbrk + alignedsz;
-    cur_vma->sbrk += alignedsz;
+    // Lấy thông tin vùng nhớ hiện tại từ symrgtbl
+    struct vm_rg_struct *current_region = &caller->mm->symrgtbl[vmaid];
+    
+    // Cập nhật thông tin cho newrg
+    // Giả sử rằng alignedsz là kích thước đã được căn chỉnh cho vùng nhớ
+    if (current_region->rg_end != 0) {
+        // Nếu vùng nhớ đã được sử dụng, ta sẽ đặt kích thước cho vùng nhớ mới
+        newrg->rg_start = current_region->rg_end;  // Vùng nhớ mới bắt đầu từ cuối vùng cũ
+    } else {
+        // Nếu vùng nhớ chưa được sử dụng, ta bắt đầu từ vị trí 0 (hoặc địa chỉ khởi tạo)
+        newrg->rg_start = 0;  // Hoặc sử dụng giá trị bắt đầu từ một địa chỉ nào đó tùy thuộc vào logic của bạn
+    }
+
+    newrg->rg_end = newrg->rg_start + alignedsz - 1;  // Tính toán vùng kết thúc dựa trên size đã căn chỉnh
+    newrg->vmaid = vmaid; // Gán vmaid cho vùng nhớ mới
+    newrg->rg_next = NULL; // Thiết lập con trỏ liên kết sau là NULL (vì đây là vùng mới)
+
+    // Cập nhật bảng vùng nhớ (symrgtbl) với vùng mới
+    caller->mm->symrgtbl[vmaid] = *newrg;
 
     return newrg;
 }
