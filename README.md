@@ -9,7 +9,7 @@
     -   Nguyễn Trường Thái Khang - 2211458
     -   Nguyễn Xuân Hy - 2211409
     -   Nguyễn Đức Phương - 2312749
-    -   3
+    -   Lê Nhật Minh - 2212046
     -   4
 
 ## Overview
