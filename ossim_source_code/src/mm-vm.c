@@ -141,9 +141,11 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
 
     if (get_free_vmrg_area(caller, vmaid, size, &rgnode) == 0)
     {
+        printf("[__ALLOC] Found free region: start=0x%d, end=0x%d\n", rgnode.rg_start, rgnode.rg_end);
+        
+        // update symbol table
         caller->mm->symrgtbl[rgid].rg_start = rgnode.rg_start;
         caller->mm->symrgtbl[rgid].rg_end = rgnode.rg_end;
-
         caller->mm->symrgtbl[rgid].vmaid = rgnode.vmaid;
 
         *alloc_addr = rgnode.rg_start;
@@ -157,40 +159,61 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
     /*Attempt to increate limit to get space */
 
     struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
-
+    if (!cur_vma) {
+        printf("[__ALLOC] Error: Cannot find VMA with ID %d\n", vmaid);
+        return -1;
+    }
     int inc_sz = PAGING_PAGE_ALIGNSZ(size);
     int inc_limit_ret;
-
+    if (inc_vma_limit(caller, vmaid, inc_sz, &inc_limit_ret) != 0) {
+        printf("[__ALLOC] Error: Failed to expand VMA %d\n", vmaid);
+        return -1;
+    }
     /* TODO retrive old_sbrk if needed, current comment out due to compiler redundant warning*/
     int old_sbrk = cur_vma->sbrk;
 
-    /* TODO INCREASE THE LIMIT
-     * inc_vma_limit(caller, vmaid, inc_sz)
-     */
+    // Determine the new region's boundaries based on VMA type
+    if (vmaid == 0) { // DATA segment (expand upwards)
+        rgnode.rg_start = old_sbrk;
+        //cur_vma->vm_end - inc_limit_ret;
+        rgnode.rg_end = rgnode.rg_start + size;
+                //printf("Debug===============================%d",rgnode.rg_end);
 
-    if (old_sbrk + size > cur_vma->vm_end)
-    {
-        if (inc_vma_limit(caller, vmaid, inc_sz) < 0)
-        {
-            printf("Cannot increase the vm limit!!!\n");
-            return -1;
-        }
+        old_sbrk = rgnode.rg_end;
+        // rgnode.rg_end += inc_limit_ret;
+    } else if (vmaid == 1) { // HEAP segment (expand downwards)
+    rgnode.rg_end = old_sbrk;
+    rgnode.rg_start = rgnode.rg_end - size; 
+    old_sbrk = rgnode.rg_start;
+    // cur_vma->vm_start -= inc_limit_ret; // Cập nhật vm_start
+    // rgnode.rg_start = cur_vma->vm_end;
+    } else {
+        printf("[__ALLOC] Error: Unsupported VMA ID %d\n", vmaid);
+        return -1;
     }
-    // if success
+    rgnode.vmaid = vmaid;
 
-    *alloc_addr = old_sbrk;
-    caller->mm->symrgtbl[rgid].rg_start = old_sbrk;
-    caller->mm->symrgtbl[rgid].rg_end = old_sbrk + size;
-    cur_vma->sbrk += size;
+    // Map the new region into physical RAM
+    //printf("[__ALLOC] Mapping new region: start=0x%d, end=0x%d, size=%d\n",
+           //rgnode.rg_start, rgnode.rg_end, inc_sz);
+      if(vmaid == 0){
+      if (vm_map_ram(caller, rgnode.rg_start, rgnode.rg_end, rgnode.rg_start,
+                    inc_sz / PAGING_PAGESZ, &rgnode) < 0) {
+          // Rollback VMA expansion on failure
+           //printf("Debug===============================%d",rgnode.rg_end);
+          if (vmaid == 0) cur_vma->vm_end -= inc_limit_ret;
+          if (vmaid == 1) cur_vma->vm_start += inc_limit_ret;
+          printf("[__ALLOC] Error: Failed to map memory for VMA %d\n", vmaid);
+          return -1;
+      }
+    }   
+ 
+    // Update symbol table and return the allocated address
+    caller->mm->symrgtbl[rgid] = rgnode;
+    *alloc_addr = rgnode.rg_start;
 
-    // inc_vma_limit(caller, vmaid, inc_sz, &inc_limit_ret);
-
-    /* TODO: commit the limit increment */
-
-    /* TODO: commit the allocation address
-    // *alloc_addr = ...
-    */
-
+    printf("[__ALLOC] Allocation successful: reg.start = 0x%d , reg.end = 0x%d for reg %d\n", rgnode.rg_start, rgnode.rg_end, rgid);
+   
     return 0;
 }
 
@@ -558,7 +581,7 @@ int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, int vmastart, int 
  *@inc_limit_ret: increment limit return
  *
  */
-int inc_vma_limit(struct pcb_t *caller, int vmaid, int inc_sz)
+int inc_vma_limit(struct pcb_t *caller, int vmaid, int inc_sz, int *inc_limit_ret)
 {
     struct vm_rg_struct *newrg = malloc(sizeof(struct vm_rg_struct));
     int inc_amt = PAGING_PAGE_ALIGNSZ(inc_sz);
