@@ -8,8 +8,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-struct pgn_t *global_fifo = NULL;
-
 /*
  * init_pte - Initialize PTE entry
  */
@@ -277,8 +275,8 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
   vma0->vm_end = PAGING_SBRK_INIT_SZ;
   //vma0->sbrk = vma0->vm_start;
   vma0->sbrk = 0;
-  struct vm_rg_struct *heap_rg = init_vm_rg(vma0->vm_start, vma0->vm_end, 0);
-  enlist_vm_rg_node(&vma0->vm_freerg_list, heap_rg);
+  struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end, 0);
+  enlist_vm_rg_node(&vma0->vm_freerg_list, first_rg);
 
   // set VMA1 for heap segment (from highest address)
   vma1->vm_id = 1;

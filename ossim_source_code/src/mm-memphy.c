@@ -156,40 +156,40 @@ int MEMPHY_get_freefp(struct memphy_struct *mp, int *retfpn)
    return 0;
 }
 
-int MEMPHY_dump(struct memphy_struct * mp)
-{
-    /*TODO dump memphy contnt mp->storage 
-     *     for tracing the memory content
-     */
-   for(int i = 0; i < mp->maxsz; i++) {
-      if(mp->storage[i] != 0) {
-         printf("index %d: %d\n", i, mp->storage[i]);
-      }
-   }
-   return 0;
-}
 // int MEMPHY_dump(struct memphy_struct * mp)
 // {
-//    if(mp == NULL || mp->storage == NULL) {
-//       printf("Error: Invalid memory or storage pointer\n");
-//       return -1; // check if memory valid?
-//    }
-//    printf("__RAM CONTENT__\n");
-
-//    unsigned long address = 0; // use unsigned long to avoid errors when traversing memory address
-
-//    // scan memory from 0 to mp-maxsz - 1
-//    for(address = 0; address < mp->maxsz; address++) {
-//       // check if value at address not equal 0
-//       if(mp->storage[address] != 0) {
-//          printf("0x%08lx: %08x\n", address, mp->storage[addr]);
+//     /*TODO dump memphy contnt mp->storage 
+//      *     for tracing the memory content
+//      */
+//    for(int i = 0; i < mp->maxsz; i++) {
+//       if(mp->storage[i] != 0) {
+//          printf("index %d: %d\n", i, mp->storage[i]);
 //       }
 //    }
-//    printf("__END CONTENT__\n");
-
-//    print("\n");
 //    return 0;
 // }
+int MEMPHY_dump(struct memphy_struct * mp)
+{
+   if(mp == NULL || mp->storage == NULL) {
+      printf("Error: Invalid memory or storage pointer\n");
+      return -1; // check if memory valid?
+   }
+   printf("__RAM CONTENT__\n");
+
+   unsigned long address = 0; // use unsigned long to avoid errors when traversing memory address
+
+   // scan memory from 0 to mp-maxsz - 1
+   for(address = 0; address < mp->maxsz; address++) {
+      // check if value at address not equal 0
+      if(mp->storage[address] != 0) {
+         printf("0x%08lx: %08x\n", address, mp->storage[address]);
+      }
+   }
+   printf("__END CONTENT__\n");
+
+   print("\n");
+   return 0;
+}
 int MEMPHY_put_freefp(struct memphy_struct *mp, int fpn)
 {
    struct framephy_struct *fp = mp->free_fp_list;
